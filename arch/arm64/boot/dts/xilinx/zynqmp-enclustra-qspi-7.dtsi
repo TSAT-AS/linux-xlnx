@@ -1,0 +1,26 @@
+&flash0 {
+	partition@qspi-bootimage {
+		label = "qspi-bootimage";
+		reg = <0x00000000 0x01500000>;
+	};
+	partition@qspi-kernel {
+		label = "qspi-kernel";
+		reg = <0x01500000 0x00e00000>;
+	};
+	partition@qspi-device-tree {
+		label = "qspi-device-tree";
+		reg = <0x02300000 0x00080000>;
+	};
+	partition@qspi-bootargs {
+		label = "qspi-bootargs";
+		reg = <0x03F80000 0x00080000>;
+	};
+	partition@qspi-bootscript {
+		label = "qspi-bootscript";
+		reg = <0x02380000 0x80000>;
+	};
+	partition@qspi-rootfs {
+		label = "qspi-rootfs";
+		reg = <0x02400000 0x01B80000>;
+	};
+};
