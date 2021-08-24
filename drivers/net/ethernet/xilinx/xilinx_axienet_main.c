@@ -264,7 +264,7 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 		ret = axienet_dma_q_init(ndev, lp->dq[i]);
 #endif
 		if (ret != 0) {
-			netdev_err(ndev, "%s: Failed to init DMA buf\n", __func__);
+			netdev_err(ndev, "%s: Failed to init DMA buf %d\n", __func__, ret);
 			break;
 		}
 	}
@@ -561,6 +561,8 @@ void __axienet_device_reset(struct axienet_dma_q *q)
  * axienet_device_reset - Reset and initialize the Axi Ethernet hardware.
  * @ndev:	Pointer to the net_device structure
  *
+ * Return: 0 on success, Negative value on errors
+ *
  * This function is called to reset and initialize the Axi Ethernet core. This
  * is typically called during initialization. It does a reset of the Axi DMA
  * Rx/Tx channels and initializes the Axi DMA BDs. Since Axi DMA reset lines
@@ -568,13 +570,14 @@ void __axienet_device_reset(struct axienet_dma_q *q)
  * Ethernet core. No separate hardware reset is done for the Axi Ethernet
  * core.
  */
-static void axienet_device_reset(struct net_device *ndev)
+static int axienet_device_reset(struct net_device *ndev)
 {
 	u32 axienet_status;
 	struct axienet_local *lp = netdev_priv(ndev);
 	u32 err, val;
 	struct axienet_dma_q *q;
 	u32 i;
+	int ret;
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
 		/* Reset the XXV MAC */
@@ -591,9 +594,9 @@ static void axienet_device_reset(struct net_device *ndev)
 	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
 		/* Reset MRMAC */
 		axienet_mrmac_reset(lp);
-
-		if (axienet_mrmac_gt_reset(ndev))
-			return;
+		ret = axienet_mrmac_gt_reset(ndev);
+		if (ret < 0)
+			return ret;
 	}
 
 	if (!lp->is_tsn) {
@@ -623,9 +626,11 @@ static void axienet_device_reset(struct net_device *ndev)
 	}
 
 	if (!lp->is_tsn) {
-		if (axienet_dma_bd_init(ndev)) {
+		ret = axienet_dma_bd_init(ndev);
+		if (ret < 0) {
 			netdev_err(ndev, "%s: descriptor allocation failed\n",
 				   __func__);
+			return ret;
 		}
 	}
 
@@ -699,6 +704,8 @@ static void axienet_device_reset(struct net_device *ndev)
 	lp->axienet_config->setoptions(ndev, lp->options);
 
 	netif_trans_update(ndev);
+
+	return 0;
 }
 
 /**
@@ -1067,7 +1074,7 @@ static int axienet_create_tsheader(u8 *buf, u8 msg_type,
 #endif
 	u64 val;
 	u32 tmp[MRMAC_TS_HEADER_WORDS];
-	u32 flags;
+	unsigned long flags;
 	int i;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
@@ -1768,7 +1775,11 @@ static int axienet_open(struct net_device *ndev)
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
-	axienet_device_reset(ndev);
+	ret  = axienet_device_reset(ndev);
+	if (ret < 0) {
+		dev_err(lp->dev, "axienet_device_reset failed\n");
+		return ret;
+	}
 
 	if (lp->phy_node) {
 		phydev = of_phy_connect(lp->ndev, lp->phy_node,
@@ -1839,7 +1850,7 @@ static int axienet_open(struct net_device *ndev)
 		}
 	}
 
-	if (lp->phy_mode == XXE_PHY_TYPE_USXGMII) {
+	if (lp->phy_mode == PHY_INTERFACE_MODE_USXGMII) {
 		netdev_dbg(ndev, "RX reg: 0x%x\n",
 			   axienet_ior(lp, XXV_RCW1_OFFSET));
 		/* USXGMII setup at selected speed */
@@ -3344,7 +3355,9 @@ static int axienet_probe(struct platform_device *pdev)
 	 *  value as the default.
 	 */
 	lp->phy_mode = PHY_INTERFACE_MODE_NA;
-	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_mode);
+	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_mode);
+	if (!ret)
+		netdev_warn(ndev, "xlnx,phy-type is deprecated, Please upgrade your device tree to use phy-mode");
 
 	/* Set default USXGMII rate */
 	lp->usxgmii_rate = SPEED_1000;
@@ -3564,7 +3577,7 @@ static int axienet_probe(struct platform_device *pdev)
 	if (ret < 0)
 		dev_warn(&pdev->dev, "couldn't find phy i/f\n");
 	lp->phy_interface = ret;
-	if (lp->phy_mode == XAE_PHY_TYPE_1000BASE_X)
+	if (lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX)
 		lp->phy_flags = XAE_PHY_TYPE_1000BASE_X;
 
 	lp->phy_node = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
