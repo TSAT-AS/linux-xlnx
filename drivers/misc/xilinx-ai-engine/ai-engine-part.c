@@ -741,6 +741,37 @@ const struct file_operations aie_part_fops = {
 };
 
 /**
+ * aie_part_open() - open the AI engine partition instance to get it ready to
+ *		     be used.
+ * @apart: AI engine partition instance pointer
+ * @rsc_metadata: pointer to static resource metadata
+ * @return: 0 for success, negative value for failure
+ *
+ * This function will make the AI engine partition instance ready to use. It
+ * should be called when the partition is requested.
+ */
+int aie_part_open(struct aie_partition *apart, void *rsc_metadata)
+{
+	int ret;
+
+	/* scan to setup the initial clock state for tiles */
+	ret = aie_part_scan_clk_state(apart);
+	if (ret)
+		return ret;
+
+	/* Sets bitmaps of statically allocated resources */
+	if (rsc_metadata) {
+		ret = aie_part_rscmgr_set_static(apart,
+						 rsc_metadata);
+		if (ret)
+			return ret;
+	}
+
+	/* preallocate memory pool for storing dmabuf descriptors */
+	return aie_part_prealloc_dbufs_cache(apart);
+}
+
+/**
  * aie_tile_release_device() - release an AI engine tile instance
  * @dev: AI engine tile device
  *
